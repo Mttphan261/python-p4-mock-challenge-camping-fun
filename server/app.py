@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
+from models import db, Activity, Camper, Signup
+from flask_restful import Api, Resource
+from flask_migrate import Migrate
+from flask import Flask, make_response, jsonify, request
 import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATABASE = os.environ.get("DB_URI", f"sqlite:///{os.path.join(BASE_DIR, 'instance/app.db')}")
+DATABASE = os.environ.get(
+    "DB_URI", f"sqlite:///{os.path.join(BASE_DIR, 'instance/app.db')}")
 
-from flask import Flask, make_response, jsonify, request
-from flask_migrate import Migrate
-from flask_restful import Api, Resource
-
-from models import db, Activity, Camper
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE
@@ -19,9 +19,98 @@ migrate = Migrate(app, db)
 
 db.init_app(app)
 
+api = Api(app)
+
+
 @app.route('/')
 def home():
-    return ''
+    return 'This is the home page'
+
+
+class Campers(Resource):
+
+    def get(self):
+        campers = [c.to_dict(only=('id', 'name', 'age')) for c in Camper.query.all()]
+        return make_response(
+            campers, 200
+        )
+    
+    def post(self):
+        data = request.get_json()
+        try:
+            new_camper = Camper(
+                name=data['name'],
+                age=data['age']
+            )
+
+            db.session.add(new_camper)
+            db.session.commit()
+
+            return make_response(new_camper.to_dict(), 201)
+        except:
+            return { "error": "400: Validation Error"}, 400
+
+
+api.add_resource(Campers, '/campers')
+
+
+class OneCamper(Resource):
+
+    def get(self, id):
+        try:
+            camper = Camper.query.filter_by(id=id).first().to_dict()
+            return make_response( camper, 200)
+        except:
+            return { "error": "404: Camper Not Found" }, 404 
+
+
+api.add_resource(OneCamper, '/campers/<int:id>')
+
+class Activities(Resource):
+
+    def get(self):
+        activities = [a.to_dict() for a in Activity.query.all()]
+        return make_response(activities, 200)
+    
+
+
+api.add_resource(Activities, '/activities')
+
+class OneActivity(Resource):
+
+    def delete(self, id):
+        try:
+            activity = Activity.query.filter_by(id=id).first()
+            #***** Delete signups like the README said? *****
+            # signups = activity.signups
+            # db.session.delete(signups)
+            db.session.delete(activity)
+            db.session.commit()
+            return {}, 204
+        except:
+            return {"error": "404: Activity not found"}, 404
+
+api.add_resource(OneActivity, '/activities/<int:id>')
+
+class Signups(Resource):
+
+    def post(self):
+        data = request.get_json()
+        try:
+            new_signup = Signup(
+                time=data['time'],
+                camper_id=data['camper_id'],
+                activity_id=data['activity_id']
+            )
+            db.session.add(new_signup)
+            db.session.commit()
+            #*****Return activity object???? return make_response(new_signup.activity.to_dict(), 201)*****
+            return make_response(new_signup.to_dict(), 201)
+        except:
+            return {'error': "400: Validation error"}, 400
+
+api.add_resource(Signups, '/signups')
+    
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
